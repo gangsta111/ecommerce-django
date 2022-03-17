@@ -12,6 +12,9 @@ from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMessage
 
+from carts.views import _cart_id
+from carts.models import Cart, CartItem
+
 def register(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
@@ -29,17 +32,17 @@ def register(request):
             #user avtivation
             current_site = get_current_site(request)
             mail_subject = 'Please activate your kanatera account'
-            message = render_to_string("accounts/account_verification_email.html",{
-            'user'   : username,
-            'domain' : current_site,
-            'uid'    : urlsafe_base64_encode(force_bytes(user.pk)),
-            'token'  : default_token_generator.make_token(user)
+            message = render_to_string("accounts/account_verification_email.html", {
+                'user'   : username,
+                'domain' : current_site,
+                'uid'    : urlsafe_base64_encode(force_bytes(user.pk)),
+                'token'  : default_token_generator.make_token(user)
             })
             to_email = email
             send_email = EmailMessage(mail_subject, message, to=[to_email])
             send_email.send()
             #messages.success(request, 'Thank you for registering with us we have sent you a verifiaction email to your email address.')
-            return redirect('/accounts/login/?command-verification&email='+email)
+            return redirect('/accounts/login/?command=verification&email='+email)
     else:
         form = RegistrationForm()
     context = {
@@ -55,6 +58,17 @@ def login(request):
         user = auth.authenticate(email=email, password=password)
 
         if user is not None:
+            try:
+                cart = Cart.objects.get(cart_id=_cart_id(request))
+                is_cart_item_exists = CartItem.objects.filter(cart=cart).exists()
+                if is_cart_item_exists:
+                    cart_item = CartItem.objects.filter(cart=cart)
+
+                    for item in cart_item:
+                        item.user = user
+                        item.save()
+            except:
+                pass
             auth.login(request, user)
             messages.success(request, 'you are now logged in.')
             return redirect('dashboard')
@@ -72,8 +86,8 @@ def logout(request):
 
 def activate(request, uidb64, token):
     try:
-        uid = urlsafe_base64_decode (uidb64), decode()
-        user = Account.default_manager.get(pk=uid)
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = Account._default_manager.get(pk=uid)
     except(TypeError, ValueError, OverflowError, Account.DoesNotExist ):
         user = None
 
@@ -94,14 +108,14 @@ def forgotPassword(request):
     if request.method =='POST':
         email = request.POST['email']
         if Account.objects.filter(email=email).exists():
-            user = Account.objects.get(email_exact=email)
+            user = Account.objects.get(email__exact = email)
             current_site = get_current_site(request)
             mail_subject = 'Please reset your password'
             message = render_to_string("accounts/reset_password_email.html",{
-            'user'   : username,
-            'domain' : current_site,
-            'uid'    : urlsafe_base64_encode(force_bytes(user.pk)),
-            'token'  : default_token_generator.make_token(user)
+                'user'   : user,
+                'domain' : current_site,
+                'uid'    : urlsafe_base64_encode(force_bytes(user.pk)),
+                'token'  : default_token_generator.make_token(user),
             })
             to_email = email
             send_email = EmailMessage(mail_subject, message, to=[to_email])
@@ -114,10 +128,10 @@ def forgotPassword(request):
             return redirect('forgotPassword')
     return render(request, 'accounts/forgotPassword.html')
 
-def resetpassword_validate(request):
+def resetpassword_validate(request, uidb64, token):
     try:
         uid = urlsafe_base64_decode(uidb64).decode()
-        user = Account._default_manager.get(pk=id)
+        user = Account._default_manager.get(pk=uid)
     except(TypeError, ValueError, OverflowError, Account.DoesNotExist):
         user = None
 
